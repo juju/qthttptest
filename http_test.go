@@ -1,7 +1,7 @@
 // Copyright 2014 Canonical Ltd.
 // Licensed under the LGPLv3, see LICENCE file for details.
 
-package httptesting_test
+package qthttptest_test
 
 import (
 	"bytes"
@@ -12,16 +12,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 
-	gc "gopkg.in/check.v1"
+	qt "github.com/frankban/quicktest"
 
-	jc "github.com/juju/testing/checkers"
-	"github.com/juju/testing/httptesting"
+	"github.com/juju/qthttptest"
 )
-
-type requestsSuite struct{}
-
-var _ = gc.Suite(&requestsSuite{})
 
 // handlerResponse holds the body of a testing handler response.
 type handlerResponse struct {
@@ -32,10 +28,10 @@ type handlerResponse struct {
 	Header http.Header
 }
 
-func makeHandler(c *gc.C, status int, ctype string) http.Handler {
+func makeHandler(c *qt.C, status int, ctype string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		body, err := ioutil.ReadAll(req.Body)
-		c.Assert(err, jc.ErrorIsNil)
+		c.Assert(err, qt.Equals, nil)
 		hasAuth := req.Header.Get("Authorization") != ""
 		for _, h := range []string{"User-Agent", "Content-Length", "Accept-Encoding", "Authorization"} {
 			delete(req.Header, h)
@@ -53,34 +49,34 @@ func makeHandler(c *gc.C, status int, ctype string) http.Handler {
 		w.WriteHeader(status)
 		enc := json.NewEncoder(w)
 		err = enc.Encode(response)
-		c.Assert(err, jc.ErrorIsNil)
+		c.Assert(err, qt.Equals, nil)
 	})
 }
 
 var assertJSONCallTests = []struct {
 	about  string
-	params httptesting.JSONCallParams
+	params qthttptest.JSONCallParams
 }{{
 	about: "simple request",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		Method: "GET",
 		URL:    "/",
 	},
 }, {
 	about: "method not specified",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL: "/",
 	},
 }, {
 	about: "POST request with a body",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		Method: "POST",
 		URL:    "/my/url",
 		Body:   strings.NewReader("request body"),
 	},
 }, {
 	about: "GET request with custom headers",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		Method: "GET",
 		URL:    "/my/url",
 		Header: http.Header{
@@ -90,14 +86,14 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "POST request with a JSON body",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		Method:   "POST",
 		URL:      "/my/url",
 		JSONBody: map[string]int{"hello": 99},
 	},
 }, {
 	about: "authentication",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		Method:       "PUT",
 		Username:     "who",
@@ -106,7 +102,7 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "test for ExceptHeader in response",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL: "/",
 		Do: func(req *http.Request) (*http.Response, error) {
 			resp, err := http.DefaultClient.Do(req)
@@ -122,7 +118,7 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "test case insensitive for ExceptHeader in response",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL: "/",
 		Do: func(req *http.Request) (*http.Response, error) {
 			resp, err := http.DefaultClient.Do(req)
@@ -138,13 +134,13 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "error status",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		ExpectStatus: http.StatusBadRequest,
 	},
 }, {
 	about: "custom Do",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		ExpectStatus: http.StatusTeapot,
 		Do: func(req *http.Request) (*http.Response, error) {
@@ -155,7 +151,7 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "custom Do with seekable JSON body",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		ExpectStatus: http.StatusTeapot,
 		JSONBody:     123,
@@ -182,7 +178,7 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "expect error",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		ExpectStatus: http.StatusTeapot,
 		Do: func(req *http.Request) (*http.Response, error) {
@@ -192,7 +188,7 @@ var assertJSONCallTests = []struct {
 	},
 }, {
 	about: "expect error regexp",
-	params: httptesting.JSONCallParams{
+	params: qthttptest.JSONCallParams{
 		URL:          "/",
 		ExpectStatus: http.StatusTeapot,
 		Do: func(req *http.Request) (*http.Response, error) {
@@ -202,68 +198,71 @@ var assertJSONCallTests = []struct {
 	},
 }}
 
-func (*requestsSuite) TestAssertJSONCall(c *gc.C) {
-	for i, test := range assertJSONCallTests {
-		c.Logf("test %d: %s", i, test.about)
-		params := test.params
+func TestAssertJSONCall(t *testing.T) {
+	c := qt.New(t)
+	for _, test := range assertJSONCallTests {
+		c.Run(test.about, func(c *qt.C) {
+			params := test.params
 
-		// A missing status is assumed to be http.StatusOK.
-		status := params.ExpectStatus
-		if status == 0 {
-			status = http.StatusOK
-		}
+			// A missing status is assumed to be http.StatusOK.
+			status := params.ExpectStatus
+			if status == 0 {
+				status = http.StatusOK
+			}
 
-		// Create the HTTP handler for this test.
-		params.Handler = makeHandler(c, status, "application/json")
+			// Create the HTTP handler for this test.
+			params.Handler = makeHandler(c, status, "application/json")
 
-		// Populate the expected body parameter.
-		expectBody := handlerResponse{
-			URL:    params.URL,
-			Method: params.Method,
-			Header: params.Header,
-		}
+			// Populate the expected body parameter.
+			expectBody := handlerResponse{
+				URL:    params.URL,
+				Method: params.Method,
+				Header: params.Header,
+			}
 
-		// A missing method is assumed to be "GET".
-		if expectBody.Method == "" {
-			expectBody.Method = "GET"
-		}
-		expectBody.Header = make(http.Header)
-		if params.JSONBody != nil {
-			expectBody.Header.Set("Content-Type", "application/json")
-		}
-		for k, v := range params.Header {
-			expectBody.Header[k] = v
-		}
-		if params.JSONBody != nil {
-			data, err := json.Marshal(params.JSONBody)
-			c.Assert(err, jc.ErrorIsNil)
-			expectBody.Body = string(data)
-			params.Body = bytes.NewReader(data)
-		} else if params.Body != nil {
-			// Handle the request body parameter.
-			body, err := ioutil.ReadAll(params.Body)
-			c.Assert(err, jc.ErrorIsNil)
-			expectBody.Body = string(body)
-			params.Body = bytes.NewReader(body)
-		}
+			// A missing method is assumed to be "GET".
+			if expectBody.Method == "" {
+				expectBody.Method = "GET"
+			}
+			expectBody.Header = make(http.Header)
+			if params.JSONBody != nil {
+				expectBody.Header.Set("Content-Type", "application/json")
+			}
+			for k, v := range params.Header {
+				expectBody.Header[k] = v
+			}
+			if params.JSONBody != nil {
+				data, err := json.Marshal(params.JSONBody)
+				c.Assert(err, qt.Equals, nil)
+				expectBody.Body = string(data)
+				params.Body = bytes.NewReader(data)
+			} else if params.Body != nil {
+				// Handle the request body parameter.
+				body, err := ioutil.ReadAll(params.Body)
+				c.Assert(err, qt.Equals, nil)
+				expectBody.Body = string(body)
+				params.Body = bytes.NewReader(body)
+			}
 
-		// Handle basic HTTP authentication.
-		if params.Username != "" || params.Password != "" {
-			expectBody.Auth = true
-		}
-		params.ExpectBody = expectBody
-		httptesting.AssertJSONCall(c, params)
+			// Handle basic HTTP authentication.
+			if params.Username != "" || params.Password != "" {
+				expectBody.Auth = true
+			}
+			params.ExpectBody = expectBody
+			qthttptest.AssertJSONCall(c, params)
+		})
 	}
 }
 
-func (*requestsSuite) TestAssertJSONCallWithBodyAsserter(c *gc.C) {
+func TestAssertJSONCallWithBodyAsserter(t *testing.T) {
+	c := qt.New(t)
 	called := false
-	params := httptesting.JSONCallParams{
+	params := qthttptest.JSONCallParams{
 		URL:     "/",
 		Handler: makeHandler(c, http.StatusOK, "application/json"),
-		ExpectBody: httptesting.BodyAsserter(func(c1 *gc.C, body json.RawMessage) {
-			c.Assert(c1, gc.Equals, c)
-			c.Assert(string(body), jc.JSONEquals, handlerResponse{
+		ExpectBody: qthttptest.BodyAsserter(func(c1 *qt.C, body json.RawMessage) {
+			c.Assert(c1, qt.Equals, c)
+			c.Assert(string(body), qthttptest.JSONEquals, handlerResponse{
 				URL:    "/",
 				Method: "GET",
 				Header: make(http.Header),
@@ -271,17 +270,18 @@ func (*requestsSuite) TestAssertJSONCallWithBodyAsserter(c *gc.C) {
 			called = true
 		}),
 	}
-	httptesting.AssertJSONCall(c, params)
-	c.Assert(called, gc.Equals, true)
+	qthttptest.AssertJSONCall(c, params)
+	c.Assert(called, qt.Equals, true)
 }
 
-func (*requestsSuite) TestAssertJSONCallWithHostedURL(c *gc.C) {
+func TestAssertJSONCallWithHostedURL(t *testing.T) {
+	c := qt.New(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(fmt.Sprintf("%q", "ok "+req.URL.Path)))
 	}))
 	defer srv.Close()
-	httptesting.AssertJSONCall(c, httptesting.JSONCallParams{
+	qthttptest.AssertJSONCall(c, qthttptest.JSONCallParams{
 		URL:        srv.URL + "/foo",
 		ExpectBody: "ok /foo",
 	})
@@ -299,19 +299,20 @@ var bodyReaderFuncs = []func(string) io.Reader{
 	},
 }
 
-func (*requestsSuite) TestDoRequestWithInferrableContentLength(c *gc.C) {
+func TestDoRequestWithInferrableContentLength(t *testing.T) {
+	c := qt.New(t)
 	text := "hello, world"
 	for i, f := range bodyReaderFuncs {
 		c.Logf("test %d", i)
 		called := false
-		httptesting.DoRequest(c, httptesting.DoRequestParams{
+		qthttptest.DoRequest(c, qthttptest.DoRequestParams{
 			Handler: http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
-				c.Check(req.ContentLength, gc.Equals, int64(len(text)))
+				c.Check(req.ContentLength, qt.Equals, int64(len(text)))
 				called = true
 			}),
 			Body: f(text),
 		})
-		c.Assert(called, gc.Equals, true)
+		c.Assert(called, qt.Equals, true)
 	}
 }
 
@@ -320,40 +321,33 @@ func (*requestsSuite) TestDoRequestWithInferrableContentLength(c *gc.C) {
 // AssertJSONResponse are also indirectly tested as they are called by
 // AssertJSONCall.
 
-type urlRewritingTransportSuite struct {
-	server *httptest.Server
-}
-
-var _ = gc.Suite(&urlRewritingTransportSuite{})
-
-func (s *urlRewritingTransportSuite) SetUpTest(c *gc.C) {
-	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestTransport(t *testing.T) {
+	c := qt.New(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(r.URL.String()))
 	}))
-}
-
-func (s *urlRewritingTransportSuite) TestTransport(c *gc.C) {
-	t := httptesting.URLRewritingTransport{
+	defer server.Close()
+	transport := qthttptest.URLRewritingTransport{
 		MatchPrefix: "http://example.com",
-		Replace:     s.server.URL,
+		Replace:     server.URL,
 	}
 	client := http.Client{
-		Transport: &t,
+		Transport: &transport,
 	}
 	resp, err := client.Get("http://example.com/path")
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	body, err := ioutil.ReadAll(resp.Body)
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	resp.Body.Close()
-	c.Assert(resp.Request.URL.String(), gc.Equals, "http://example.com/path")
-	c.Assert(string(body), gc.Equals, "/path")
+	c.Assert(resp.Request.URL.String(), qt.Equals, "http://example.com/path")
+	c.Assert(string(body), qt.Equals, "/path")
 
-	t.RoundTripper = &http.Transport{}
-	resp, err = client.Get(s.server.URL + "/otherpath")
-	c.Assert(err, jc.ErrorIsNil)
+	transport.RoundTripper = &http.Transport{}
+	resp, err = client.Get(server.URL + "/otherpath")
+	c.Assert(err, qt.Equals, nil)
 	body, err = ioutil.ReadAll(resp.Body)
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	resp.Body.Close()
-	c.Assert(resp.Request.URL.String(), gc.Equals, s.server.URL+"/otherpath")
-	c.Assert(string(body), gc.Equals, "/otherpath")
+	c.Assert(resp.Request.URL.String(), qt.Equals, server.URL+"/otherpath")
+	c.Assert(string(body), qt.Equals, "/otherpath")
 }

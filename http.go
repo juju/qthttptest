@@ -1,7 +1,7 @@
 // Copyright 2014 Canonical Ltd.
 // Licensed under the LGPLv3, see LICENCE file for details.
 
-package httptesting
+package qthttptest
 
 import (
 	"bytes"
@@ -14,14 +14,12 @@ import (
 	"net/url"
 	"strings"
 
-	gc "gopkg.in/check.v1"
-
-	jc "github.com/juju/testing/checkers"
+	qt "github.com/frankban/quicktest"
 )
 
 // BodyAsserter represents a function that can assert the correctness of
 // a JSON reponse.
-type BodyAsserter func(c *gc.C, body json.RawMessage)
+type BodyAsserter func(c *qt.C, body json.RawMessage)
 
 // JSONCallParams holds parameters for AssertJSONCall.
 // If left empty, some fields will automatically be filled with defaults.
@@ -97,7 +95,7 @@ type JSONCallParams struct {
 
 // AssertJSONCall asserts that when the given handler is called with
 // the given parameters, the result is as specified.
-func AssertJSONCall(c *gc.C, p JSONCallParams) {
+func AssertJSONCall(c *qt.C, p JSONCallParams) {
 	c.Logf("JSON call, url %q", p.URL)
 	if p.ExpectStatus == 0 {
 		p.ExpectStatus = http.StatusOK
@@ -122,7 +120,7 @@ func AssertJSONCall(c *gc.C, p JSONCallParams) {
 	AssertJSONResponse(c, rec, p.ExpectStatus, p.ExpectBody)
 
 	for k, v := range p.ExpectHeader {
-		c.Assert(rec.HeaderMap[textproto.CanonicalMIMEHeaderKey(k)], gc.DeepEquals, v, gc.Commentf("header %q", k))
+		c.Assert(rec.HeaderMap[textproto.CanonicalMIMEHeaderKey(k)], qt.DeepEquals, v, qt.Commentf("header %q", k))
 	}
 }
 
@@ -130,24 +128,24 @@ func AssertJSONCall(c *gc.C, p JSONCallParams) {
 // recorded the given HTTP status, response body and content type. If
 // expectBody is of type BodyAsserter it will be called with the response
 // body to ensure the response is correct.
-func AssertJSONResponse(c *gc.C, rec *httptest.ResponseRecorder, expectStatus int, expectBody interface{}) {
-	c.Assert(rec.Code, gc.Equals, expectStatus, gc.Commentf("body: %s", rec.Body.Bytes()))
+func AssertJSONResponse(c *qt.C, rec *httptest.ResponseRecorder, expectStatus int, expectBody interface{}) {
+	c.Assert(rec.Code, qt.Equals, expectStatus, qt.Commentf("body: %s", rec.Body.Bytes()))
 
 	// Ensure the response includes the expected body.
 	if expectBody == nil {
-		c.Assert(rec.Body.Bytes(), gc.HasLen, 0)
+		c.Assert(rec.Body.Bytes(), qt.HasLen, 0)
 		return
 	}
-	c.Assert(rec.Header().Get("Content-Type"), gc.Equals, "application/json")
+	c.Assert(rec.Header().Get("Content-Type"), qt.Equals, "application/json")
 
 	if assertBody, ok := expectBody.(BodyAsserter); ok {
 		var data json.RawMessage
 		err := json.Unmarshal(rec.Body.Bytes(), &data)
-		c.Assert(err, jc.ErrorIsNil, gc.Commentf("body: %s", rec.Body.Bytes()))
+		c.Assert(err, qt.Equals, nil, qt.Commentf("body: %s", rec.Body.Bytes()))
 		assertBody(c, data)
 		return
 	}
-	c.Assert(rec.Body.String(), jc.JSONEquals, expectBody)
+	c.Assert(rec.Body.String(), JSONEquals, expectBody)
 }
 
 // DoRequestParams holds parameters for DoRequest.
@@ -211,7 +209,7 @@ type DoRequestParams struct {
 // DoRequest is the same as Do except that it returns
 // an httptest.ResponseRecorder instead of an http.Response.
 // This function exists for backward compatibility reasons.
-func DoRequest(c *gc.C, p DoRequestParams) *httptest.ResponseRecorder {
+func DoRequest(c *qt.C, p DoRequestParams) *httptest.ResponseRecorder {
 	resp := Do(c, p)
 	if p.ExpectError != "" {
 		return nil
@@ -224,7 +222,7 @@ func DoRequest(c *gc.C, p DoRequestParams) *httptest.ResponseRecorder {
 	}
 	rec.WriteHeader(resp.StatusCode)
 	_, err := io.Copy(rec.Body, resp.Body)
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	return rec
 }
 
@@ -232,7 +230,7 @@ func DoRequest(c *gc.C, p DoRequestParams) *httptest.ResponseRecorder {
 // parameters and returns the resulting HTTP response.
 // Note that, as with http.Client.Do, the response body
 // must be closed.
-func Do(c *gc.C, p DoRequestParams) *http.Response {
+func Do(c *qt.C, p DoRequestParams) *http.Response {
 	if p.Method == "" {
 		p.Method = "GET"
 	}
@@ -246,13 +244,13 @@ func Do(c *gc.C, p DoRequestParams) *http.Response {
 	}
 	if p.JSONBody != nil {
 		data, err := json.Marshal(p.JSONBody)
-		c.Assert(err, jc.ErrorIsNil)
+		c.Assert(err, qt.Equals, nil)
 		p.Body = bytes.NewReader(data)
 	}
 	// Note: we avoid NewRequest's odious reader wrapping by using
 	// a custom nopCloser function.
 	req, err := http.NewRequest(p.Method, p.URL, nopCloser(p.Body))
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	if p.JSONBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -272,10 +270,10 @@ func Do(c *gc.C, p DoRequestParams) *http.Response {
 	}
 	resp, err := p.Do(req)
 	if p.ExpectError != "" {
-		c.Assert(err, gc.ErrorMatches, p.ExpectError)
+		c.Assert(err, qt.ErrorMatches, p.ExpectError)
 		return nil
 	}
-	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(err, qt.Equals, nil)
 	return resp
 }
 
