@@ -1,13 +1,15 @@
 // Copyright 2012-2014 Canonical Ltd.
 // Licensed under the LGPLv3, see LICENCE file for details.
 
-package checkers
+package qthttptest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
-	gc "gopkg.in/check.v1"
+	qt "github.com/frankban/quicktest"
+	"github.com/google/go-cmp/cmp"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/yaml.v2"
 )
@@ -24,7 +26,6 @@ type codecEqualChecker struct {
 // the expected body in BSON and back to interface{} so we can check
 // the whole content. Otherwise we lose information when unmarshaling.
 var BSONEquals = &codecEqualChecker{
-	name:      "BSONEquals",
 	marshal:   bson.Marshal,
 	unmarshal: bson.Unmarshal,
 }
@@ -36,7 +37,6 @@ var BSONEquals = &codecEqualChecker{
 // back to interface{}, so we can check the whole content.
 // Otherwise we lose information when unmarshaling.
 var JSONEquals = &codecEqualChecker{
-	name:      "JSONEquals",
 	marshal:   json.Marshal,
 	unmarshal: json.Unmarshal,
 }
@@ -48,40 +48,36 @@ var JSONEquals = &codecEqualChecker{
 // back to interface{}, so we can check the whole content.
 // Otherwise we lose information when unmarshaling.
 var YAMLEquals = &codecEqualChecker{
-	name:      "YAMLEquals",
 	marshal:   yaml.Marshal,
 	unmarshal: yaml.Unmarshal,
 }
 
-func (checker *codecEqualChecker) Info() *gc.CheckerInfo {
-	return &gc.CheckerInfo{
-		Name:   checker.name,
-		Params: []string{"obtained", "expected"},
-	}
+func (checker *codecEqualChecker) ArgNames() []string {
+	return []string{"got", "want"}
 }
 
-func (checker *codecEqualChecker) Check(params []interface{}, names []string) (result bool, error string) {
-	gotContent, ok := params[0].(string)
+func (checker *codecEqualChecker) Check(got interface{}, args []interface{}, note func(key string, value interface{})) error {
+	gotContent, ok := got.(string)
 	if !ok {
-		return false, fmt.Sprintf("expected string, got %T", params[0])
+		return qt.BadCheckf("expected string, got %T", args[0])
 	}
-	expectContent := params[1]
+	expectContent := args[0]
 	expectContentBytes, err := checker.marshal(expectContent)
 	if err != nil {
-		return false, fmt.Sprintf("cannot marshal expected contents: %v", err)
+		return qt.BadCheckf("cannot marshal expected contents: %v", err)
 	}
 	var expectContentVal interface{}
 	if err := checker.unmarshal(expectContentBytes, &expectContentVal); err != nil {
-		return false, fmt.Sprintf("cannot unmarshal expected contents: %v", err)
+		return fmt.Errorf("cannot unmarshal expected contents: %v", err)
 	}
 
 	var gotContentVal interface{}
 	if err := checker.unmarshal([]byte(gotContent), &gotContentVal); err != nil {
-		return false, fmt.Sprintf("cannot unmarshal obtained contents: %v; %q", err, gotContent)
+		return fmt.Errorf("cannot unmarshal obtained contents: %v; %q", err, gotContent)
 	}
-
-	if ok, err := DeepEqual(gotContentVal, expectContentVal); !ok {
-		return false, err.Error()
+	if diff := cmp.Diff(gotContentVal, expectContentVal); diff != "" {
+		note("diff (-got +want)", qt.Unquoted(diff))
+		return errors.New("values are not equal")
 	}
-	return true, ""
+	return nil
 }
