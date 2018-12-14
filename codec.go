@@ -11,7 +11,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/google/go-cmp/cmp"
 	"gopkg.in/mgo.v2/bson"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 type codecEqualChecker struct {
@@ -59,7 +59,7 @@ func (checker *codecEqualChecker) ArgNames() []string {
 func (checker *codecEqualChecker) Check(got interface{}, args []interface{}, note func(key string, value interface{})) error {
 	gotContent, ok := got.(string)
 	if !ok {
-		return qt.BadCheckf("expected string, got %T", args[0])
+		return qt.BadCheckf("expected string, got %T", got)
 	}
 	expectContent := args[0]
 	expectContentBytes, err := checker.marshal(expectContent)
