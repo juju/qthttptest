@@ -1,5 +1,9 @@
 language: go
 go_import_path: "github.com/juju/qthttptest"
 go:
-  - "1.11"
+  - "1.11.x"
+  - "1.12.x"
+  - "1.13.x"
+  - 1.x
+  - master
 script: GO111MODULE=on go test ./...
