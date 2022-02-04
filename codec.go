@@ -6,7 +6,7 @@ package qthttptest
 import (
 	qt "github.com/frankban/quicktest"
 	"gopkg.in/mgo.v2/bson"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // BSONEquals defines a checker that checks whether a byte slice, when
